@@ -25,6 +25,9 @@
 #define DEVICE_HW_STATE_OFF	    0
 #define DEVICE_HW_STATE_TRANS	    2
 
+volatile uint32_t fsp_cnt = 0;
+uint32_t lpm_status = 0;
+
 int32_t set_device_handler(uint32_t dev_id, bool enable)
 {
 	struct ti_device *dev = NULL;
@@ -43,6 +46,19 @@ int32_t set_device_handler(uint32_t dev_id, bool enable)
 	}
 
 	VERBOSE("SET_DEVICE: dev_id=%d state=%d\n", dev_id, state);
+
+	if (dev_id == 170U)
+	{
+		lpm_status = state;
+		/* Change FSP now */
+		if (fsp_cnt % 2 == 0)
+			k3_suspend_to_ram(1);
+		else
+			k3_suspend_to_ram(2);
+		fsp_cnt++;
+
+		return ret;
+	}
 
 	ret = device_prepare_exclusive(host_id, dev_id, &host_idx, &dev);
 	if (ret != 0) {
@@ -169,6 +185,25 @@ bool get_device_handler(uint32_t dev_id)
 
 	VERBOSE("GET_DEVICE: dev_id=%d\n", dev_id);
 
+	if(dev_id == 170 ){
+		uint8_t current_state;
+		switch (lpm_status) {
+		case TISCI_MSG_VALUE_DEVICE_SW_STATE_AUTO_OFF:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_OFF;
+			break;
+		case TISCI_MSG_VALUE_DEVICE_SW_STATE_ON:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_ON;
+			break;
+		default:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_TRANS;
+			break;
+		}
+
+		programmed_state          = lpm_status;
+		
+		goto dec;
+	}
+
 	ret = device_prepare_nonexclusive(host_id, dev_id, &host_idx, &dev);
 	if (ret != 0) {
 		return false;
@@ -194,7 +229,7 @@ bool get_device_handler(uint32_t dev_id)
 		break;
 	}
 
-	if ((programmed_state == (uint8_t)DEVICE_SW_STATE_ON) &&
+dec:	if ((programmed_state == (uint8_t)DEVICE_SW_STATE_ON) &&
 	   (current_state == (uint8_t)DEVICE_HW_STATE_ON)) {
 		return true;
 	}
