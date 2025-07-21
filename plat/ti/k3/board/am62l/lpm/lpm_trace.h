@@ -25,6 +25,8 @@ __wkupsramfunc void lpm_trace_debug(uint32_t value);
 	#define TRACE_DEBUG_ACTION_SHIFT		22U
 	#define TRACE_PM_ACTION_FAIL			0x40U
 
+	#define fsp_seq_trace(step) lpm_trace_debug(step)
+	
 	#if LOG_LEVEL >= LOG_LEVEL_INFO
 		#define lpm_seq_trace(step) lpm_trace_debug((TRACE_DEBUG_CHANNEL_LPM << TRACE_DEBUG_DOMAIN_SHIFT) \
 								| (((uint32_t)TRACE_PM_ACTION_LPM_SEQUENCE) << TRACE_DEBUG_ACTION_SHIFT) \

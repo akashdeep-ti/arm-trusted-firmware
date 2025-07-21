@@ -138,6 +138,17 @@ __wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 		return -1;
 	}
 
+	// /* Disable the LPSC to make sure no one can access DDR during this seq */
+	// psc_raw_lpsc_set_state(K3_MAIN_PSC_BASE, LPSC_MAIN_DDR_DATA_ISO_N,
+	// 	0x2, 0);
+	//   psc_raw_pd_initiate(K3_MAIN_PSC_BASE, PD_DDR);
+	// if (psc_raw_pd_wait(K3_MAIN_PSC_BASE, PD_DDR) != 0U) {
+	// 	fsp_seq_trace(0xF0);
+	// }
+
+	/* Set lp cmd = 0x4 / 0x14 to indicate lp self refresh DFS request */
+	mmio_write_32(0xF308278, (mmio_read_32(0xF308278)) | 0x400);
+
 	/* Set valid data for FSP points to initiate DFS request */
 	write_mmr_field(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(276), 1U, 1U, 24U);
 	write_mmr_field(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(277), 1U, 1U, 8U);
@@ -230,10 +241,46 @@ __wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 	/* Check the status of freq change and acknowledge all interrupts */
 	mmio_write_32((DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(350)), int_status);
 
+	// check status of freq change
+	if ((int_status & 0x1) == 0x1) {
+		fsp_seq_trace(0x15); // TODO:Correct error code
+		// printf("Error: The DFS request from the hardware interface was ignored
+		// because the dfs enable parameter is cleared to �b0, the memory was still
+		// initializing, or the DQS oscillator was in progress\n");
+	}
+	if ((int_status & 0x2) == 0x2) {
+		fsp_seq_trace(0x16); // TODO:Correct error code
+		// printf("Error: The DFS operation initiated by the hardware interface was
+		// terminated because the PHY did not de-assert the dfi init complete signal
+		// within the time specified in the tdfi init start fN parameter after the
+		// controller asserted the dfi init start signal during a DFS operation\n");
+	}
+	if ((int_status & 0x8) == 0x8) {
+		fsp_seq_trace(0x17); // TODO:Correct error code
+		// printf("Error: The DFS request from software was ignored because the dfs
+		// enable parameter is cleared to �b0, the memory was still initializing, or
+		// the DQS oscillator was in progress\n");
+	}
+	if ((int_status & 0x10) == 0x10) {
+		// printf("Error: The DFS operation initiated by the software interface was "
+		//        "terminated because the PHY did not de-assert the dfi init complete "
+		//        "signal within the time specified in the tdfi init start fN "
+		//        "parameter after the controller asserted the dfi init start signal "
+		//        "during a DFS operation\n");
+		fsp_seq_trace(0x18);
+	}
+
 	/* Check if any error occurred and return failure */
 	if ((int_status & DFS_INT_ERROR_MASK) != 0U) {
 		return -8;
 	}
+
+	// psc_raw_lpsc_set_state(K3_MAIN_PSC_BASE, LPSC_MAIN_DDR_DATA_ISO_N,
+	// 	0x3, 0);
+	// psc_raw_pd_initiate(K3_MAIN_PSC_BASE, PD_DDR);
+	// if (psc_raw_pd_wait(K3_MAIN_PSC_BASE, PD_DDR) != 0U) {
+	// 	fsp_seq_trace(0xF1);
+	// }
 
 	return 0;
 }
