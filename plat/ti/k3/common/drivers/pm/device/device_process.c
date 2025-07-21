@@ -12,8 +12,12 @@
 #include <device_prepare.h>
 #include <host_idx_mapping.h>
 #include <pm.h>
+#include <common/debug.h>
+#include <lpm_stub.h>
 #include <psc.h>
 
+volatile uint32_t fsp_cnt = 0;
+uint32_t lpm_status = 0;
 int32_t set_device_handler(struct tisci_msg_set_device_req *msg_recv)
 {
 	struct tisci_msg_set_device_req *req =
@@ -35,6 +39,19 @@ int32_t set_device_handler(struct tisci_msg_set_device_req *msg_recv)
 	pm_trace(TRACE_PM_ACTION_MSG_PARAM_VAL, state);
 
 	resp->hdr.flags = 0U;
+
+	if (id == 170U)
+	{
+		lpm_status = state;
+		/* Change FSP now */
+		if (fsp_cnt % 2 == 0)
+			k3_suspend_to_ram(1);
+		else
+			k3_suspend_to_ram(2);
+		fsp_cnt++;
+
+		return ret;
+	}
 
 	ret = device_prepare_exclusive(host_id, id, &host_idx, &dev);
 	if (ret == SUCCESS) {
@@ -185,6 +202,28 @@ int32_t get_device_handler(struct tisci_msg_get_device_resp *msg_recv)
 
 	pm_trace(TRACE_PM_ACTION_MSG_RECEIVED, TISCI_MSG_GET_DEVICE);
 	pm_trace(TRACE_PM_ACTION_MSG_PARAM_DEV_CLK_ID, id);
+
+	if(id == 170 ){
+		uint8_t current_state;
+		switch (lpm_status) {
+		case TISCI_MSG_VALUE_DEVICE_SW_STATE_AUTO_OFF:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_OFF;
+			break;
+		case TISCI_MSG_VALUE_DEVICE_SW_STATE_ON:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_ON;
+			break;
+		default:
+			current_state = TISCI_MSG_VALUE_DEVICE_HW_STATE_TRANS;
+			break;
+		}
+
+		resp->context_loss_count        = 0;
+		resp->resets                    = 0;
+		resp->programmed_state          = lpm_status;
+		resp->current_state             = current_state;
+		
+		return ret;
+	}
 
 	resp->hdr.flags = 0U;
 
