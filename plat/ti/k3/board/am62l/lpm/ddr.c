@@ -7,6 +7,7 @@
 #include <board_def.h>
 #include <ddr.h>
 #include <lib/mmio.h>
+#include <lpm_trace.h>
 
 /* DDR Subsystem configuration base address and field values */
 #define DDRSS0_SSCFG_BASE				(0xF300000UL)
@@ -124,26 +125,7 @@ __wkupsramfunc void write_mmr_field(uint32_t mmr_address, uint32_t field_value, 
 	mmio_write_32(mmr_address, val);
 }
 
-/**
- * @brief Execute DDR Frequency Set Point (FSP) change sequence
- *
- * This function performs a complete hardware handshake sequence to change the
- * DDR operating frequency by switching to a different FSP. The sequence involves
- * coordinating between the DDR controller, PLL, and WKUP control registers.
- *
- * @param fsp_point Target FSP to switch to (0, 1, or 2)
- *
- * @return 0 on success, negative error code on failure:
- *         -1: Timeout waiting for controller busy to clear
- *         -2: Timeout waiting for FSP clock change request
- *         -3: Invalid FSP request type
- *         -4: Timeout waiting for clock change request to clear
- *         -5: Timeout waiting for DDR FSP acknowledgment
- *         -6: DDR FSP acknowledgment error bit set
- *         -7: Timeout waiting for DFS interrupt status
- *         -8: DFS operation error (HW/SW ignored or timeout)
- */
-__wkupsramfunc static int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
+__wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 {
 	uint32_t req, req_type, timeout, int_status;
 
@@ -188,7 +170,7 @@ __wkupsramfunc static int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 	} else if (req_type == 2U) {
 		write_mmr_field((MAIN_PLL_MMR_BASE + (0U * 0x1000U) + ((2U * 0x4U) + 0x80U)), 0x4U, 7U, 0U);
 	} else {
-		return -3;
+		return -3;//wrong as you have started the sequence, move it to early location (fallback mechanism)
 	}
 	CORE_DATA_BARRIER;
 
