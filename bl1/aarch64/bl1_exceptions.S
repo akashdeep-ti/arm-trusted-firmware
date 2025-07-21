@@ -51,6 +51,10 @@ end_vector_entry SErrorSP0
 	 * -----------------------------------------------------
 	 */
 vector_entry SynchronousExceptionSPx
+	mov x0, #1
+loop:	
+	cmp x0, #0
+	bne loop
 	mov	x0, #SYNC_EXCEPTION_SP_ELX
 	bl	plat_report_exception
 	no_ret	plat_panic_handler
