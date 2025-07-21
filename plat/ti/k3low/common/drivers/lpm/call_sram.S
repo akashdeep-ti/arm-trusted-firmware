@@ -23,6 +23,7 @@
 func k3low_lpm_switch_stack
 
 	/* lr to stack */
+    stp x29, x30, [sp,#-16]
 
 	/* change stack pointer */
 	mov	x3, sp

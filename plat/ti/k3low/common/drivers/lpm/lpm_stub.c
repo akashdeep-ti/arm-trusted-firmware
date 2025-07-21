@@ -75,6 +75,9 @@
 					  | WKUP_CTRL_PMCTRL_IO_0_GLOBAL_WUEN	 \
 					  | WKUP_CTRL_PMCTRL_IO_0_IO_ISO_CTRL)
 
+#define SAVV_CORE_DATA_BARRIER __asm volatile("  dsb sy         ;");
+#define SAVV_CORE_INS_BARRIER __asm volatile("  isb         ;");
+
 #define RTC_ONLY_PLUS_DDR_MAGIC_WORD		(0x6D555555U)
 #define DEEP_SLEEP_MAGIC_WORD			(0xD5555555U)
 
@@ -403,6 +406,11 @@ __wkupsramfunc static bool lpm_wait_for_secondary_core_down(void)
 
 __wkupsramsuspendentry void k3low_lpm_stub_entry(uint32_t mode)
 {
+	// uint32_t *ddr_cntr1 = (uint32_t *)0xF300104;
+	// uint32_t *ddr_cntr2 = (uint32_t *)0xF300108;
+	// uint32_t *ddr_cntr3 = (uint32_t *)0xF30010C;
+	// uint32_t *ddr_int = (uint32_t *) 0xF308538;//3c, 40, 44, 48, 4c, 50, 54, 58, 5c
+
 	if (mode == TI_K3_SLEEP_MODE_RTC_PLUS_DDR) {
 		/* Wait for a53_1 to turn off */
 		if (lpm_wait_for_secondary_core_down() == false) {
@@ -499,6 +507,46 @@ __wkupsramsuspendentry void k3low_lpm_stub_entry(uint32_t mode)
 			wfi();
 			lpm_seq_trace_fail(LPM_SEQ_UNEXPECTED_WFI_RETURN);
 		}
+	} else if (mode == 1) {
+
+		fsp_seq_trace(0xFFFFFFFA);
+		// fsp_seq_trace(*ddr_cntr1);
+		// fsp_seq_trace(*ddr_cntr2);
+		// fsp_seq_trace(*ddr_cntr3);
+		/* Print DDR Registers */
+		// for (int i = 0; i < 10; i++) {
+		//   fsp_seq_trace(*(ddr_int+i));
+		// }
+		execute_ddr_fsp_seq(1);
+		// fsp_seq_trace(0xFFFFFFFB);
+		// fsp_seq_trace(*ddr_cntr1);
+		// fsp_seq_trace(*ddr_cntr2);
+		// fsp_seq_trace(*ddr_cntr3);
+		/* Print DDR Registers */
+		// for (int i = 0; i < 10; i++) {
+		//   fsp_seq_trace(*(ddr_int+i));
+		// }
+
+	} else if (mode == 2) {
+
+		fsp_seq_trace(0xFFFFFFFC);
+		// fsp_seq_trace(*ddr_cntr1);
+		// fsp_seq_trace(*ddr_cntr2);
+		// fsp_seq_trace(*ddr_cntr3);
+		// /* Print DDR Registers */
+		// for (int i = 0; i < 10; i++) {
+		//   fsp_seq_trace(*(ddr_int+i));
+		// }
+		execute_ddr_fsp_seq(2); // 2 is the operating freq - 400MHz
+		// fsp_seq_trace(0xFFFFFFFD);
+		// fsp_seq_trace(*ddr_cntr1);
+		// fsp_seq_trace(*ddr_cntr2);
+		// fsp_seq_trace(*ddr_cntr3);
+		// /* Print DDR Registers */
+		// for (int i = 0; i < 10; i++) {
+		//   fsp_seq_trace(*(ddr_int+i));
+		// }
+
 	} else  {
 		for (;;) {
 			lpm_seq_trace_fail(LPM_SEQ_INVALID_MODE);
@@ -670,12 +718,21 @@ static void k3_lpm_jump_to_stub(uint32_t mode)
 	uintptr_t jump = (uintptr_t)K3_SUSPEND_ENTRY;
 	uintptr_t stack = (uintptr_t)DEVICE_WKUP_SRAM_STACK_BASE;
 	uint32_t sctlr;
+	SAVV_CORE_DATA_BARRIER;
 	/* disable MMU */
 	sctlr = (uint32_t)read_sctlr_el3();
 	sctlr &= (uint32_t)~SCTLR_EL3_M_BIT;
 	write_sctlr_el3((uint64_t)sctlr);
+	SAVV_CORE_INS_BARRIER;
 
 	k3low_lpm_switch_stack(jump, stack, mode);
+
+	/* Enable MMU */
+	SAVV_CORE_DATA_BARRIER;
+	sctlr = (uint32_t)read_sctlr_el3();
+	sctlr |= SCTLR_EL3_M_BIT;
+	write_sctlr_el3((uint64_t)sctlr);
+	SAVV_CORE_INS_BARRIER;
 }
 
 int32_t k3low_lpm_stub_copy_to_sram(void)
