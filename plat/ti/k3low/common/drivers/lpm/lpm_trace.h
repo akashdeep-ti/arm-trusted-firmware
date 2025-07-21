@@ -58,6 +58,8 @@ __wkupsramfunc void k3low_lpm_trace_debug(uint32_t value);
 #define LPM_TRACE_STEP(step) \
 	(((uint32_t)step) << TRACE_PM_ACTION_LPM_SEQ_SHIFT)
 
+#define fsp_seq_trace(step) k3low_lpm_trace_debug(step)
+
 #if LOG_LEVEL >= LOG_LEVEL_INFO
 #define lpm_seq_trace(step) \
 	k3low_lpm_trace_debug(LPM_TRACE_BASE | LPM_TRACE_SEQ_ACTION | \
