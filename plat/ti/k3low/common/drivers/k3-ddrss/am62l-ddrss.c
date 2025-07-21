@@ -474,6 +474,20 @@ int am62l_lpddr4_init(void)
 	v2a_ctl_reg = (v2a_ctl_reg & DDRSS_V2A_CTL_REG_SDRAM_IDX_MASK) | sdram_idx;
 	mmio_write_32((uintptr_t)(DDRSS_SS_CFG + DDRSS_V2A_CTL_REG), v2a_ctl_reg);
 
+	/* Write into performance counters to track the runtime status - Count evry cycle for which: */
+	/*  
+	 * command queue is full = 0x1C
+	 * core read FIFO is full = 0x22-------------------------------------
+	 * write response FIFO is full = 0x20
+	 * info FIFO is full = 0x1D-----------------------------
+	 * PORT read FIFO is full = 0x23 --------------------
+	 * port write FIFO is full = 0x21---------------------
+	 * write latency FIFO is full = 0x1E--------------------------
+	 * port command FIFO is full = 0x1F
+	 */
+	// *((uint32_t*)(DDRSS_SS_CFG + 0x100)) = ((0x20<<16) | (0x1F<<8) | (0x1C<<0));//0xf300100, 
+	// Read from cnt1 -0xf300104, cnt2 - 0xf300108, cnt3 - 0xf30010c, cnt4 - 0xf300110
+
 	/* Initialize LPDDR4 */
 	config->ctlbase = ddrss.ddrss_ctl_cfg;
 	config->infohandler = k3_lpddr4_info_handler;

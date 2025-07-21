@@ -287,7 +287,7 @@ static void am62l_pwr_domain_suspend(const psci_power_state_t *target_state)
 	ti_clks_suspend();
 	INFO("Started Suspend Sequence in ATF\n");
 	/* Isolate the I/Os to allow I/O Daisy chain wakeup */
-	k3low_lpm_set_io_isolation(true);
+	// k3low_lpm_set_io_isolation(true);
 	k3low_lpm_config_magic_words(mode);
 	ti_sci_prepare_sleep(mode, context_save_addr, 0);
 	INFO("sent prepare message\n");
@@ -377,7 +377,7 @@ static void am62l_pwr_domain_suspend_finish(const psci_power_state_t *target_sta
 	}
 
 	/* Remove the I/O isolation */
-	k3low_lpm_set_io_isolation(false);
+	// k3low_lpm_set_io_isolation(false);
 	/* Initialize the console to provide early debug support */
 	k3_console_setup();
 	k3low_config_wake_sources(false);
