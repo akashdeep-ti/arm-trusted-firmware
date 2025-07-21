@@ -49,6 +49,7 @@ static struct k3_ddrss_desc ddrss;
 const uint32_t *lpddr4_ctl_data;
 const uint32_t *lpddr4_pi_data;
 const uint32_t *lpddr4_phy_data;
+const uint32_t *lpddr4_phy_fsp1_data;
 
 /* set default DDR size to 2GB */
 uint64_t ddr_ram_size = 0x80000000;
@@ -59,10 +60,12 @@ uint64_t ddr_ram_size = 0x80000000;
 #define DDRSS_SS_CFG 0x0f300000
 #define PLL_CFG 0x04060000
 #define DDRSS_PI_REGISTER_BLOCK__OFFS   0x2000
+#define DDRSS_PHY_REGISTER_BLOCK__OFFS	0x4000
 #define DDRSS_PI_87__SFR_OFFS   0x15C
 #define DDRSS_PI_83__SFR_OFFS   0x14C
 #define DDRSS_CTL_350__SFR_OFFS 0x578
 #define DDRSS_CTL_342__SFR_OFFS 0x558
+#define DDRSS_PHY_1281__SFR_OFFS 0x1404
 
 #define DENALI_CTL_0_DRAM_CLASS_DDR4	0xA
 #define DENALI_CTL_0_DRAM_CLASS_LPDDR4	0xB
@@ -293,9 +296,11 @@ static int ddrss_set_pll(unsigned long freq)
 	int ret = 0;
 
 	if (freq == ddrss.ddr_freq1)
-		ret = set_ddr_pll_div(4);
+	ret = set_ddr_pll_div(9);//=2000/(div+1) = 2000/10 = 200MHz as per new DDR configuration
 	else if (freq == 25000000)
 		ret = set_ddr_pll_div(79);
+	else if (freq == ddrss.ddr_freq2)
+		ret = set_ddr_pll_div(4); //freq = 400MHz as per new DDR configuration
 	
 	return ret;
 }
@@ -320,6 +325,7 @@ static void k3_lpddr4_freq_update(struct k3_ddrss_desc *ddr)
 		val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
 
 		val &= 0x03;
+		printf("freq set %d \n", val);
 		if (val == 1)
 			ddrss_set_pll(ddr->ddr_freq1);
 		else if (val == 2)
@@ -340,7 +346,7 @@ static void k3_lpddr4_freq_update(struct k3_ddrss_desc *ddr)
 		*((uint32_t *)(DDRSS_CTRL_MMR + 0x84)) = 0x00;
 	}
 
-	INFO("%s DDR Freq change complete \n", __func__);
+	printf("%s DDR Freq change complete \n", __func__);
 }
 
 /*************************************************************************
@@ -498,6 +504,13 @@ int k3_lpddr4_init(void)
 			lpddr4_phy_data = prop;
 			fdt32_to_cpu_array(prop, prop_length);
 		}
+
+		prop = (void*) fdt_getprop(dtb, node, "ti,phy-fsp1-data",&prop_length);
+
+		if (prop) {
+			lpddr4_phy_fsp1_data = prop;
+			fdt32_to_cpu_array(prop, prop_length);
+		}
 		
 		INFO("lpddr4 dtb: ctl-data ptr=%p, pi-data=%p, phy-data=%p\n",lpddr4_ctl_data,lpddr4_pi_data,lpddr4_phy_data); 
 	}
@@ -589,6 +602,13 @@ set_psc_def_pll:
 	driverdt->writectlconfigex(pd, lpddr4_ctl_data, LPDDR4_INTR_CTL_REG_COUNT);
 	driverdt->writephyindepconfigex(pd, lpddr4_pi_data, LPDDR4_INTR_PHY_INDEP_REG_COUNT);
 	driverdt->writephyconfigex(pd, lpddr4_phy_data, LPDDR4_INTR_PHY_REG_COUNT);
+	if (ddrss.ddr_freq1 != ddrss.ddr_freq2) {
+		/* Disable multicast and program PHY registers for just F1 */
+		//select freq0 to write to, this corresponds to F1
+		// HW_WR_REG32(AM62_DDRSS_CTL_BASE + DDRSS_PHY_Core_REGISTER_BLOCK__OFFS + DDRSS_PHY_1281__SFR_OFFS, DDRSS_PHY_1281_DATA_FSP1  );
+		*((uint32_t *)(DDRSS_CTL_CFG + DDRSS_PHY_REGISTER_BLOCK__OFFS + DDRSS_PHY_1281__SFR_OFFS)) = 0; //TODO: Change to appropriate macro
+		driverdt->writephyconfigex(pd, lpddr4_phy_fsp1_data, LPDDR4_INTR_PHY_REG_COUNT);
+	}
 
 	TH_OFFSET_FROM_REG(LPDDR4__START__REG, CTL_SHIFT, offset);
 	INFO("start-status: offset =0x%x \n", offset);

@@ -32,7 +32,9 @@ override ENABLE_PIE := 0
 endif
 
 DTB_FILE_NAME ?= k3-am62l-ddr.dtb
-
+#DTB_ARRAY_SIZE = $(shell echo $$(($(shell wc -c < ${BUILD_PLAT}/fdts/$(DTB_FILE_NAME)))))
+#$(info DTB_ARRAY_SIZE = $(DTB_ARRAY_SIZE))
+#	ASFLAGS 		+= -DDTB_ARRAY_SIZE=$(DTB_ARRAY_SIZE)
 $(eval $(call MAKE_LIB_DIRS))
 
 include lib/libfdt/libfdt.mk
@@ -43,7 +45,7 @@ endef
 
 define add_asflag
 	ASFLAGS 		+= -DBL1_DTB_PATH=\"${BUILD_PLAT}/fdts/$(DTB_FILE_NAME)\"
-	ASFLAGS 		+= -DDTB_ARRAY_SIZE=9400
+	ASFLAGS 		+= -DDTB_ARRAY_SIZE=15000
 endef
 
 define add_dtb
