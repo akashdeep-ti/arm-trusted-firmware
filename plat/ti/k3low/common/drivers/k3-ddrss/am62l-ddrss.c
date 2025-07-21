@@ -68,10 +68,12 @@ const uint32_t *lpddr4_phy_data;
 #define PLL0_HSDIV2_CTRL 0x88
 
 #define DDRSS_PI_REGISTER_BLOCK__OFFS 0x2000
+#define DDRSS_PHY_REGISTER_BLOCK__OFFS 0x4000
 #define DDRSS_PI_87__SFR_OFFS 0x15C
 #define DDRSS_PI_83__SFR_OFFS 0x14C
 #define DDRSS_CTL_350__SFR_OFFS 0x578
 #define DDRSS_CTL_342__SFR_OFFS 0x558
+#define DDRSS_PHY_1281__SFR_OFFS 0x1404
 
 #define DENALI_CTL_0_DRAM_CLASS_DDR4 0xAU
 #define DENALI_CTL_0_DRAM_CLASS_LPDDR4 0xBU
@@ -485,6 +487,15 @@ int am62l_lpddr4_init(void)
 					LPDDR4_INTR_PHY_INDEP_REG_COUNT);
 	driverdt->writephyconfigex(pd, am62lx_ddr_cfg.phy_data,
 				   LPDDR4_INTR_PHY_REG_COUNT);
+	
+	if (ddrss.ddr_freq1 != ddrss.ddr_freq2) {
+		/* Disable multicast and program PHY registers for just F1 */
+		//select freq0 to write to, this corresponds to F1
+		// HW_WR_REG32(AM62_DDRSS_CTL_BASE + DDRSS_PHY_Core_REGISTER_BLOCK__OFFS + DDRSS_PHY_1281__SFR_OFFS, DDRSS_PHY_1281_DATA_FSP1  );
+		*((uint32_t *)(DDRSS_CTL_CFG + DDRSS_PHY_REGISTER_BLOCK__OFFS + DDRSS_PHY_1281__SFR_OFFS)) = 0; //TODO: Change to appropriate macro
+		driverdt->writephyconfigex(pd, am62lx_ddr_cfg.phy_fsp1_data,
+			LPDDR4_INTR_PHY_REG_COUNT);
+	}
 
 	TH_OFFSET_FROM_REG(LPDDR4__START__REG, CTL_SHIFT, offset);
 	driverdt->readreg(pd, LPDDR4_CTL_REGS, offset, &regval);

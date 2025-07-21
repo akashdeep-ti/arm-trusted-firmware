@@ -28,6 +28,7 @@ struct am62lx_ddr_config {
 	uint32_t ctl_data[AM62L_DDR_CTL_REG_COUNT];
 	uint32_t pi_data[AM62L_DDR_PI_REG_COUNT];
 	uint32_t phy_data[AM62L_DDR_PHY_REG_COUNT];
+	uint32_t phy_fsp1_data[AM62L_DDR_PHY_REG_COUNT];
 };
 
 extern const struct am62lx_ddr_config am62lx_ddr_cfg;
