@@ -74,6 +74,7 @@ const uint32_t *lpddr4_phy_data;
 #define DDRSS_CTL_350__SFR_OFFS 0x578
 #define DDRSS_CTL_342__SFR_OFFS 0x558
 #define DDRSS_PHY_1281__SFR_OFFS 0x1404
+#define DDRSS_PHY_1306__SFR_OFFS 0x1468
 
 #define DENALI_CTL_0_DRAM_CLASS_DDR4 0xAU
 #define DENALI_CTL_0_DRAM_CLASS_LPDDR4 0xBU
@@ -261,6 +262,52 @@ static int ddrss_set_pll(unsigned long freq)
 	return ret;
 }
 
+/**
+ * @brief Handle DDR frequency change request from controller
+ *
+ * This function implements the hardware handshake sequence for handling DDR
+ * frequency change requests during Frequency Set Point (FSP) transitions. It
+ * waits for the DDR controller's frequency change request, adjusts the PLL
+ * divider to the requested frequency, and acknowledges the change back to the
+ * controller.
+ *
+ * @param ddr Pointer to DDRSS descriptor containing frequency configuration
+ */
+static void k3_lpddr4_handle_freq_change_request(struct k3_ddrss_desc *ddr)
+{
+	volatile uint32_t val;
+
+	/* update the PLL divisor for DDR PLL */
+	val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
+	val &= 0x80;
+	while (val == 0) {
+		val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
+		val &= 0x80;
+	}
+	val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
+
+	val &= 0x03;
+	printf("freq set %d \n", val);
+	if (val == 1)
+		ddrss_set_pll(ddr->ddr_freq1);
+	else if (val == 2)
+		ddrss_set_pll(ddr->ddr_freq2);
+	else if (val == 0)
+		ddrss_set_pll(ddr->ddr_freq0);
+	else
+		INFO("%s invalid DDR Freq request \n", __func__);
+
+	*((uint32_t *)(DDRSS_CTRL_MMR + 0x84)) = 0x01;
+	val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
+	val &= 0x80;
+	while (val == 0x80) {
+		val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x80));
+		val &= 0x80;
+	}
+
+	*((uint32_t *)(DDRSS_CTRL_MMR + 0x84)) = 0x00;
+}
+
 /*************************************************************************
  * Function to change DDRSS PLL clock. It is called by the lpddr4 driver
  * during training
@@ -272,35 +319,91 @@ static void k3_lpddr4_freq_update(struct k3_ddrss_desc *ddr)
 	uint32_t req_type;
 
 	for (counter = 0; counter < ddr->ddr_fhs_cnt; counter++) {
-		/* update the PLL divisor for DDR PLL */
-		val = mmio_read_32(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ);
-		val &= 0x80U;
-		while (val == 0U) {
-			val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
-			val &= 0x80U;
-		}
-		val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
+		// /* update the PLL divisor for DDR PLL */
+		// val = mmio_read_32(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ);
+		// val &= 0x80U;
+		// while (val == 0U) {
+		// 	val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
+		// 	val &= 0x80U;
+		// }
+		// val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
 
-		req_type = val & 0x03;
-		if (req_type == 1U)
-			ddrss_set_pll(ddr->ddr_freq1);
-		else if (req_type == 2U)
-			ddrss_set_pll(ddr->ddr_freq2);
-		else if (req_type == 0U)
-			ddrss_set_pll(ddr->ddr_freq0);
-		else
-			WARN("invalid DDR freq request type\n");
+		// req_type = val & 0x03;
+		// if (req_type == 1U)
+		// 	ddrss_set_pll(ddr->ddr_freq1);
+		// else if (req_type == 2U)
+		// 	ddrss_set_pll(ddr->ddr_freq2);
+		// else if (req_type == 0U)
+		// 	ddrss_set_pll(ddr->ddr_freq0);
+		// else
+		// 	WARN("invalid DDR freq request type\n");
 
-		mmio_write_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_ACK),  0x01);
-		val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
-		val &= 0x80U;
-		while (val == 0x80U) {
-			val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
-			val &= 0x80U;
-		}
-		mmio_write_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_ACK), 0x00);
+		// mmio_write_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_ACK),  0x01);
+		// val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
+		// val &= 0x80U;
+		// while (val == 0x80U) {
+		// 	val = mmio_read_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_REQ));
+		// 	val &= 0x80U;
+		// }
+		// mmio_write_32((uintptr_t)(DDRSS_CTRL_MMR + DDR4_FSP_CLKCHNG_ACK), 0x00);
+		k3_lpddr4_handle_freq_change_request(ddr);
 	}
 	INFO("DDR Freq change complete\n");
+}
+
+/**
+ * @brief Switch DDR FSP after training is complete
+ *
+ * This function switches the DDR frequency set point after initial training
+ * has completed.
+ *
+ * @param ddr: Pointer to DDRSS descriptor containing configuration
+ */
+static void k3_lpddr4_switch_fsp_post_training(struct k3_ddrss_desc *ddr)
+{
+	volatile uint32_t val;
+
+	/*
+	 * Set valid data for FSP - mr_fsp_data_valid_fN to initiate DFS request
+	 * This tells the DDR controller that the FSP data is valid and ready for use.
+	 */
+	mmio_setbits_32(DDRSS_CTL_CFG + 0x450, 0x1000000);  
+	mmio_setbits_32(DDRSS_CTL_CFG + 0x454, 0x101);  
+	
+	/*
+	 * Write FSP request to WKUP_CTRL_MMR
+	 * CHNG_DDR4_FSP_REQ register: bits[1:0] specify target FSP (0, 1, or 2)
+	 * bit[8] is the request valid bit (CHNG_DDR4_FSP_REQ_SET)
+	 */
+	*((uint32_t *)(DDRSS_CTRL_MMR + 0x0)) = 0x1;
+	*((uint32_t *)(DDRSS_CTRL_MMR + 0x0)) = (0x1) | 0x100;
+	dsb(); /* Data synchronization barrier to ensure write completes */
+
+	/*
+	 * Execute the PLL frequency change sequence
+	 * This function waits for DDR4_FSP_CLKCHNG_REQ, adjusts the PLL divider,
+	 * sets DDR4_FSP_CLKCHNG_ACK, and waits for the controller to acknowledge
+	 */
+	k3_lpddr4_handle_freq_change_request(ddr);
+
+	/*
+	 * Wait for CHNG_DDR4_FSP_ACK (bit 7) to be set
+	 * This indicates the DDR controller has acknowledged the FSP change request
+	 */
+	val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x4)); /* Read CHNG_DDR4_FSP_ACK register */
+	val &= 0x80; /* Check bit 7 (ACK bit) */
+	while (val == 0x0) {
+		val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x4));
+		val &= 0x80;
+	}
+
+	/*
+	 * De-assert the FSP request bit (bit 8)
+	 * Clear CHNG_DDR4_FSP_REQ_SET to complete the handshake
+	 */
+	val = (uint32_t)*((uint32_t *)(DDRSS_CTRL_MMR + 0x0));
+	val &= ~(((uint32_t)1)<<8); 
+	*((uint32_t *)(DDRSS_CTRL_MMR + 0x0)) = val;
 }
 
 /*************************************************************************
@@ -351,9 +454,9 @@ static void lpm_restore_ddr(lpddr4_privatedata *pd, lpddr4_obj *driverdt)
 	 * Set the phy_set_dfi_input_Z parameter bit corresponding to the
 	 * reset signal to 1'b1. Program the controller to a state
 	 */
-	driverdt->readreg(pd, LPDDR4_CTL_REGS, (0x00005468 / 4), &regval);
-	regval = (regval | (0x1));
-	driverdt->writereg(pd, LPDDR4_CTL_REGS, (0x00005468 / 4), regval);
+	// driverdt->readreg(pd, LPDDR4_CTL_REGS, (0x00005468 / 4), &regval);
+	// regval = (regval | (0x1));
+	// driverdt->writereg(pd, LPDDR4_CTL_REGS, (0x00005468 / 4), regval);
 
 	/* Configure the DDR controller (and not the PI) to issue a PWRUP SREFRESH EXIT */
 	driverdt->readreg(pd, LPDDR4_CTL_REGS, (0x000001A8 / 4), &regval);
@@ -458,6 +561,10 @@ int am62l_lpddr4_init(void)
 	if (ret != 0)
 		return ret;
 
+	restore = (mmio_read_32((WKUP_CTRL_MMR_SEC_5_BASE +
+			CANUART_WAKE_OFF_MODE_STAT)) ==
+	  RTC_ONLY_PLUS_DDR_MAGIC_WORD);
+
 	ddrss.ddrss_ctl_cfg = (void *)DDRSS_CTL_CFG;
 	ddrss.ddrss_ctrl_mmr = (void *)DDRSS_CTRL_MMR;
 	ddrss.ddrss_ss_cfg = (void *)DDRSS_SS_CFG;
@@ -502,6 +609,8 @@ int am62l_lpddr4_init(void)
 	driverdt->writephyconfigex(pd, am62lx_ddr_cfg.phy_data,
 				   LPDDR4_INTR_PHY_REG_COUNT);
 	
+	if (restore)
+		*((uint32_t *)(DDRSS_CTL_CFG + DDRSS_PHY_REGISTER_BLOCK__OFFS + DDRSS_PHY_1306__SFR_OFFS)) |= 1;
 	if (ddrss.ddr_freq1 != ddrss.ddr_freq2) {
 		/* Disable multicast and program PHY registers for just F1 */
 		//select freq0 to write to, this corresponds to F1
@@ -509,6 +618,8 @@ int am62l_lpddr4_init(void)
 		*((uint32_t *)(DDRSS_CTL_CFG + DDRSS_PHY_REGISTER_BLOCK__OFFS + DDRSS_PHY_1281__SFR_OFFS)) = 0; //TODO: Change to appropriate macro
 		driverdt->writephyconfigex(pd, am62lx_ddr_cfg.phy_fsp1_data,
 			LPDDR4_INTR_PHY_REG_COUNT);
+		if (restore)
+			*((uint32_t *)(DDRSS_CTL_CFG + DDRSS_PHY_REGISTER_BLOCK__OFFS + DDRSS_PHY_1306__SFR_OFFS)) |= 1;
 	}
 
 	TH_OFFSET_FROM_REG(LPDDR4__START__REG, CTL_SHIFT, offset);
@@ -518,9 +629,6 @@ int am62l_lpddr4_init(void)
 		return -ENXIO;
 	}
 
-	restore = (mmio_read_32((WKUP_CTRL_MMR_SEC_5_BASE +
-				 CANUART_WAKE_OFF_MODE_STAT)) ==
-		   RTC_ONLY_PLUS_DDR_MAGIC_WORD);
 	if (restore) {
 		INFO("Exiting RTC only + DDR");
 		lpm_restore_ddr(pd, driverdt);
@@ -548,6 +656,19 @@ int am62l_lpddr4_init(void)
 
 	val = mmio_read_32((uintptr_t)(DDRSS_CTL_CFG + DDRSS_CTL_342__SFR_OFFS));
 	INFO("lpddr4: post start - CTL Interrupt status=0x%x\n", val);
+
+	/* If restore mode, change FSP from FSP2 to FSP1 */
+	//TODO: Add logic to read whether last fsp point was fsp1 and then switch
+	if (restore) {
+		INFO("RTC+DDR restore: Training completed at FSP2, changing to FSP1\n");
+		// ret = k3_lpddr4_switch_fsp_post_training(&ddrss);
+		k3_lpddr4_switch_fsp_post_training(&ddrss);
+		// if (ret != 0) {
+		// 	ERROR("Failed to change FSP to FSP1: %d\n", ret);
+		// 	return ret;
+		// }
+		INFO("Successfully changed to FSP1 after restore\n");
+	}
 
 	return 0;
 }
