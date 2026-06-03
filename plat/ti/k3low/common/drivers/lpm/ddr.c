@@ -8,10 +8,13 @@
 #include <ddr.h>
 #include <lib/mmio.h>
 #include <lpm_trace.h>
+#include "k3_lpm_timeout.h"
 
 /* DDR Subsystem configuration base address and field values */
 #define DDRSS0_SSCFG_BASE				(0xF300000UL)
 #define CSL_EMIF_SSCFG_V2A_CTL_REG			(0x00000020U)
+#define INT_RAW_REG (0xA0)
+#define BUS_TIMEOUT_REG (0x9C)
 #define SDRAM_IDX					0xFU
 #define REGION_IDX					0xFU
 
@@ -163,6 +166,7 @@ __wkupsramfunc static void enable_ddr_data_retention(void)
 	write_mmr_field((WKUP_CTRL_MMR_SEC_4_BASE + DDR32SS_PMCTRL), 0x0U, 1U, 31U);
 }
 
+#if 0
 __wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 {
 	uint32_t req, req_type, timeout, int_status;
@@ -321,6 +325,280 @@ __wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp_point)
 	// }
 
 	return 0;
+}
+#endif
+
+__wkupsramfunc int32_t execute_ddr_fsp_seq(uint8_t fsp) {
+  uint32_t temp, timeout;
+  uint32_t errors = 0;
+  uint32_t val;
+
+  /* Set valid data for FSP F0 and F2 mr_fsp_data_valid_fN to initiate DFS
+   * request */
+
+//James removed, these are taken care of in the DDR configuration   
+  //mmio_setbits_32(DDRSS0_CTRL_BASE +
+  //                    CTLCFG_DENALI_CTL_(276,
+  //                0x1000000); // bit 24 set
+  //mmio_setbits_32(DDRSS0_CTRL_BASE +
+  //                    CTLCFG_DENALI_CTL_(277,
+  //                0x101); // bit 8 set and bit 0 set
+
+  if (!(fsp >= 0 && fsp <= 2)) {
+    lpm_seq_trace(0x11); // TODO:Correct error code
+    // printf("Error: Invalid DDR FSP supplied!\n");
+    errors++;
+  } else {
+	fsp_seq_trace(0xDEAD0009);
+		
+	//check for CONTROLLER_BUSY = 0 + CTLCFG_DENALI_CTL_(276)
+	while((*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(330)) & 0x1) == 1)
+	{
+		fsp_seq_trace(0xDEAD0010);
+		temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+		fsp_seq_trace(temp);
+	}
+	fsp_seq_trace(0xDEAD0020);
+    temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	fsp_seq_trace(temp);
+    
+	//set inhibit_dram_cmd = 1
+
+	temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(326));
+	temp = temp | 0x01000000;  
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(326)) = temp;
+	CORE_DATA_BARRIER;
+
+	//Perform DFS operation while memories are in the SRPD Short with memory Clock Gating
+   // temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(158));
+   // *(volatile uint32_t *)(CSL_DDR16SS0_CTLPHY_WRAP_CTL_CFG_CTLCFG_B
+   // ASE + CTLCFG_DENALI_CTL_(158)) = (temp & ~0xFF00) | (0x14<<8);
+   // k3low_lpm_delay_1us();
+
+	//psc_raw_lpsc_set_state(K3_MAIN_PSC_BASE, LPSC_MAIN_DDR_DATA_ISO_N,
+	//	       MDCTL_STATE_DISABLE, 0);
+	//psc_raw_pd_initiate(K3_MAIN_PSC_BASE, PD_DDR);
+	//psc_raw_pd_wait(K3_MAIN_PSC_BASE, PD_DDR);
+
+	//check for CONTROLLER_BUSY = 0
+	//while((*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(330)) & 0x1) == 1)
+	//{
+	//	fsp_seq_trace(0xDEAD0011);
+	//}
+	fsp_seq_trace(0xDEAD0030);
+    temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	fsp_seq_trace(temp);
+
+    *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_REQ) =
+        (fsp & 0x3);
+    CORE_DATA_BARRIER;
+	fsp_seq_trace(0xDEAD0031);
+    //temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	//fsp_seq_trace(temp);
+
+    *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_REQ) =
+        (fsp & 0x3) + 0x100;
+    CORE_DATA_BARRIER;
+	//k3low_lpm_delay_1us();
+	
+	fsp_seq_trace(0xDEAD0021);
+    //temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	//fsp_seq_trace(temp);
+
+    timeout = 0;
+    do {
+      temp = *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE +
+                                    DDR4_FSP_CLKCHNG_REQ) &
+             0x80;
+      timeout++;
+      if (timeout > 10000000) {
+        // printf("Error: DDR FSP Timeout!\n");
+        lpm_seq_trace(0x40);
+        errors++;
+        return errors;
+      }
+    } while (temp != 0x80);
+	//k3low_lpm_delay_1us();
+	fsp_seq_trace(0xDEAD0022);
+
+
+	//fsp_seq_trace(timeout);
+
+	//psc_raw_lpsc_set_state(K3_MAIN_PSC_BASE, LPSC_MAIN_DDR_DATA_ISO_N,
+	//	       MDCTL_STATE_DISABLE, 0);
+	//psc_raw_pd_initiate(K3_MAIN_PSC_BASE, PD_DDR);
+	//psc_raw_pd_wait(K3_MAIN_PSC_BASE, PD_DDR);
+	
+	
+	//read req_type
+    temp = *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE +
+                                  DDR4_FSP_CLKCHNG_REQ) &
+           0x03;
+    CORE_DATA_BARRIER;
+	fsp_seq_trace(0xDEAD0023);
+    /* Update the MAIN_PLL0_HSDIV2 value depending on the FSP. */
+    //if (temp == 1) {
+    //  set_ddr_pll_div(4); // frequency = 200Mhz, FOUTVCO_P/(div+1), FOUTVCO_P=2000MHz
+    //} else if (temp == 2) {
+    //  set_ddr_pll_div(4); // frequency = 400Mhz
+    //} else if (temp == 0) {
+    //  set_ddr_pll_div(79); // frequency = 25Mhz
+    //} else {
+    //  lpm_seq_trace(0x12); // TODO:Correct error code
+    //  // printf("Error: Invalid DDR FSP received from controller!\n");
+    //  errors++;
+    //}
+
+    // lpm_seq_trace(0x15);
+
+    /* Set the FSP ack bit to acknowledge the clock has been changed*/
+    *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + DDR4_FSP_CLKCHNG_ACK) =
+        0x1; // set the ack bit
+    CORE_DATA_BARRIER;
+	fsp_seq_trace(0xDEAD0024);
+    //temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	//fsp_seq_trace(temp);
+
+    /* Wait for request to go away */
+    timeout = 0;
+    do {
+      temp = *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE +
+                                    DDR4_FSP_CLKCHNG_REQ) &
+             0x80;
+      timeout++;
+      if (timeout > 10000000) {
+        lpm_seq_trace(0x13); // TODO:Correct error code
+        // printf("Error: DDR FSP Timeout!\n");
+        errors++;
+        return errors;
+      }
+    } while (temp == 0x80);
+	fsp_seq_trace(0xDEAD0025);
+	/* Clear the ACK bit */
+    *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + DDR4_FSP_CLKCHNG_ACK) =
+        0x0; // clear the ack bit
+    CORE_DATA_BARRIER;
+	fsp_seq_trace(0xDEAD0026);
+
+	//temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	//fsp_seq_trace(temp);
+
+    /* Poll for CHNG_DDR4_FSP_ACK bit to be 1 */
+    // wait for DDR to ack original request, and check error
+    timeout = 0;
+    do {
+      temp =
+          *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_ACK) &
+          0x80;
+      timeout++;
+      if (timeout > 10000000) {
+        lpm_seq_trace(0x14); // TODO:Correct error code
+        // printf("Error: DDR FSP Timeout!\n");
+        errors++;
+        return errors;
+      }
+    } while (temp == 0x0);
+	fsp_seq_trace(0xDEAD0027);
+	//set inhibit_dram_cmd = 0
+	temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(326));
+	temp = temp & ~0x01000000;  
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(326)) = temp;
+	CORE_DATA_BARRIER;
+    fsp_seq_trace(0xDEAD0028);
+	errors +=
+        *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_ACK) &
+        0x1;
+
+    /* De assert request */
+    val = *(volatile uint32_t *)(WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_REQ);
+	  val &= ~CHNG_DDR4_FSP_REQ_REQ;
+	  *(volatile uint32_t *) (WKUP_CTRL_MMR_SEC_4_BASE + CHNG_DDR4_FSP_REQ) = val;
+  }
+   // temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	//fsp_seq_trace(temp);
+
+  fsp_seq_trace(0xDEAD0011);
+	temp = *(volatile uint32_t *)(DDRSS0_SSCFG_BASE + INT_RAW_REG);
+	fsp_seq_trace(temp);
+	if (temp==0x4)
+	{
+		fsp_seq_trace(0xDEAD0050);
+		temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(369));
+		fsp_seq_trace(temp);
+		temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(370));
+		fsp_seq_trace(temp);
+		*(volatile uint32_t *)(DDRSS0_SSCFG_BASE + BUS_TIMEOUT_REG) = 0;
+		fsp_seq_trace(0xDEAD0035);
+		k3low_lpm_delay_1us();
+	}
+  
+  //psc_raw_lpsc_set_state(K3_MAIN_PSC_BASE, LPSC_MAIN_DDR_DATA_ISO_N,
+  //					MDCTL_STATE_ENABLE, 0);
+  //		psc_raw_pd_initiate(K3_MAIN_PSC_BASE, PD_DDR);
+  //		psc_raw_pd_wait(K3_MAIN_PSC_BASE, PD_DDR);
+
+
+  //SR exit
+  //temp = *(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(158);
+  //*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(158) = (temp & ~0xFF00) | (0x2<<8);
+  //k3low_lpm_delay_1us();
+
+  
+
+  do {
+    temp =
+        *((volatile uint32_t *)(DDRSS0_CTRL_BASE +
+                                CTLCFG_DENALI_CTL_(342))) >> 16;
+  } while (temp == 0);
+  volatile uint32_t *ackptr =
+      (volatile uint32_t *)(DDRSS0_CTRL_BASE +
+                            CTLCFG_DENALI_CTL_(350));
+
+  // check status of freq change
+  if ((temp & 0x1) == 0x1) {
+    lpm_seq_trace(0x15); // TODO:Correct error code
+    // printf("Error: The DFS request from the hardware interface was ignored
+    // because the dfs enable parameter is cleared to �b0, the memory was still
+    // initializing, or the DQS oscillator was in progress\n");
+    *ackptr = 0x1; // ack and clear the int
+    errors++;
+  }
+  if ((temp & 0x2) == 0x2) {
+    lpm_seq_trace(0x16); // TODO:Correct error code
+    // printf("Error: The DFS operation initiated by the hardware interface was
+    // terminated because the PHY did not de-assert the dfi init complete signal
+    // within the time specified in the tdfi init start fN parameter after the
+    // controller asserted the dfi init start signal during a DFS operation\n");
+    *ackptr = 0x2; // ack and clear the int
+    errors++;
+  }
+  if ((temp & 0x4) == 0x4) {
+    *ackptr = 0x4; // ack and clear the int
+  }
+  if ((temp & 0x8) == 0x8) {
+    lpm_seq_trace(0x12); // TODO:Correct error code
+    // printf("Error: The DFS request from software was ignored because the dfs
+    // enable parameter is cleared to �b0, the memory was still initializing, or
+    // the DQS oscillator was in progress\n");
+    *ackptr = 0x8; // ack and clear the int
+    errors++;
+  }
+  if ((temp & 0x10) == 0x10) {
+    // printf("Error: The DFS operation initiated by the software interface was "
+    //        "terminated because the PHY did not de-assert the dfi init complete "
+    //        "signal within the time specified in the tdfi init start fN "
+    //        "parameter after the controller asserted the dfi init start signal "
+    //        "during a DFS operation\n");
+    lpm_seq_trace(0x50);
+    *ackptr = 0x10; // ack and clear the int
+    errors++;
+  }
+  if ((temp & 0x20) == 0x20) {
+    *ackptr = 0x20; // ack and clear the int
+  }
+  // lpm_seq_trace(0x16);
+
+  return errors;
 }
 
 /**

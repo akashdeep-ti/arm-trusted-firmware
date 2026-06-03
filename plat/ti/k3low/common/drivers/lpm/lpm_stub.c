@@ -87,6 +87,10 @@
 /* PLL HSDIV0 Configuration for DSS Deep Sleep */
 #define PLL_HSDIV0_MAX_DIVIDER_VALUE	(0x0FU)
 
+#define DDRSS0_CTRL_BASE				(0xF308000UL)
+/* Register block CTL (CTL_0-CTL_422) offset, total and field values */
+#define CTLCFG_DENALI_CTL_(x)				((x) << 2U)
+
 /* Main PLL to be saved and restored */
 __wkupsramdata struct pll_raw_data main_pll0 = {
 .base = K3_MAIN_PLL_MMR_BASE + PLLOFFSET(0U), };
@@ -406,9 +410,12 @@ __wkupsramfunc static bool lpm_wait_for_secondary_core_down(void)
 
 __wkupsramsuspendentry void k3low_lpm_stub_entry(uint32_t mode)
 {
-	// uint32_t *ddr_cntr1 = (uint32_t *)0xF300104;
-	// uint32_t *ddr_cntr2 = (uint32_t *)0xF300108;
-	// uint32_t *ddr_cntr3 = (uint32_t *)0xF30010C;
+	uint32_t *ddr_cntr1 = (uint32_t *)0xF300104;
+	uint32_t *ddr_cntr2 = (uint32_t *)0xF300108;
+	uint32_t *ddr_cntr3 = (uint32_t *)0xF30010C;
+	uint32_t *ddr_cntr4 = (uint32_t *)0xF300110;
+	uint32_t *ddr_cntr5 = (uint32_t *)0xF308528;  //CONTROLLER_BUSY
+	uint32_t *ddr_cntr6 = (uint32_t *)0xF3082C4;  //CURRENT_REG_COPY
 	// uint32_t *ddr_int = (uint32_t *) 0xF308538;//3c, 40, 44, 48, 4c, 50, 54, 58, 5c
 
 	if (mode == TI_K3_SLEEP_MODE_RTC_PLUS_DDR) {
@@ -510,43 +517,73 @@ __wkupsramsuspendentry void k3low_lpm_stub_entry(uint32_t mode)
 	} else if (mode == 1) {
 
 		fsp_seq_trace(0xFFFFFFFA);
-		// fsp_seq_trace(*ddr_cntr1);
-		// fsp_seq_trace(*ddr_cntr2);
-		// fsp_seq_trace(*ddr_cntr3);
+		   //Clear ints
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(344)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(345) )= 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(347)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(348)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(349)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(350)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(351)) = 0xFFFFFFFF;
+
+		fsp_seq_trace(*ddr_cntr1);
+		fsp_seq_trace(*ddr_cntr2);
+		fsp_seq_trace(*ddr_cntr3);
+		fsp_seq_trace(*ddr_cntr4);
+		fsp_seq_trace(*ddr_cntr5);
+		fsp_seq_trace(*ddr_cntr6);
 		/* Print DDR Registers */
-		// for (int i = 0; i < 10; i++) {
-		//   fsp_seq_trace(*(ddr_int+i));
-		// }
+	// for (int i = 0; i < 10; i++) {
+	//   fsp_seq_trace(*(ddr_int+i));
+	// }
 		execute_ddr_fsp_seq(1);
-		// fsp_seq_trace(0xFFFFFFFB);
-		// fsp_seq_trace(*ddr_cntr1);
-		// fsp_seq_trace(*ddr_cntr2);
-		// fsp_seq_trace(*ddr_cntr3);
+		fsp_seq_trace(0xFFFFFFFB);
+		fsp_seq_trace(*ddr_cntr1);
+		fsp_seq_trace(*ddr_cntr2);
+		fsp_seq_trace(*ddr_cntr3);
+		fsp_seq_trace(*ddr_cntr4);
+		fsp_seq_trace(*ddr_cntr5);
+		fsp_seq_trace(*ddr_cntr6);
 		/* Print DDR Registers */
-		// for (int i = 0; i < 10; i++) {
+		//for (int i = 0; i < 10; i++) {
 		//   fsp_seq_trace(*(ddr_int+i));
 		// }
 
 	} else if (mode == 2) {
 
 		fsp_seq_trace(0xFFFFFFFC);
-		// fsp_seq_trace(*ddr_cntr1);
-		// fsp_seq_trace(*ddr_cntr2);
-		// fsp_seq_trace(*ddr_cntr3);
-		// /* Print DDR Registers */
-		// for (int i = 0; i < 10; i++) {
-		//   fsp_seq_trace(*(ddr_int+i));
-		// }
-		execute_ddr_fsp_seq(2); // 2 is the operating freq - 400MHz
-		// fsp_seq_trace(0xFFFFFFFD);
-		// fsp_seq_trace(*ddr_cntr1);
-		// fsp_seq_trace(*ddr_cntr2);
-		// fsp_seq_trace(*ddr_cntr3);
-		// /* Print DDR Registers */
-		// for (int i = 0; i < 10; i++) {
-		//   fsp_seq_trace(*(ddr_int+i));
-		// }
+		//Clear ints
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(344)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(345)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(347)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(348)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(349)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(350)) = 0xFFFFFFFF;
+	*(volatile uint32_t *)(DDRSS0_CTRL_BASE + CTLCFG_DENALI_CTL_(351)) = 0xFFFFFFFF;
 
+		fsp_seq_trace(*ddr_cntr1);
+		fsp_seq_trace(*ddr_cntr2);
+		fsp_seq_trace(*ddr_cntr3);
+		fsp_seq_trace(*ddr_cntr4);
+		fsp_seq_trace(*ddr_cntr5);
+		fsp_seq_trace(*ddr_cntr6);
+		/* Print DDR Registers */
+		//for (int i = 0; i < 10; i++) {
+		//  fsp_seq_trace(*(ddr_int+i));
+	// }
+
+		execute_ddr_fsp_seq(2); // 2 is the operating freq - 400MHz
+		fsp_seq_trace(0xFFFFFFFD);
+		fsp_seq_trace(*ddr_cntr1);
+		fsp_seq_trace(*ddr_cntr2);
+		fsp_seq_trace(*ddr_cntr3);
+		fsp_seq_trace(*ddr_cntr4);
+		fsp_seq_trace(*ddr_cntr5);
+		fsp_seq_trace(*ddr_cntr6);
+		/* Print DDR Registers */
+		//for (int i = 0; i < 10; i++) {
+		//  fsp_seq_trace(*(ddr_int+i));
+		//}
 	} else  {
 		for (;;) {
 			lpm_seq_trace_fail(LPM_SEQ_INVALID_MODE);
